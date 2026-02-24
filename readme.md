@@ -47,7 +47,7 @@ where live parsing causes noticeable UI lag.
 
 ```lua
 {
-  "your-username/telescope-cached-headings.nvim",
+  "Chiarandini/telescope-cached-headings.nvim",
   dependencies = {
     "nvim-telescope/telescope.nvim",
     "nvim-lua/plenary.nvim",
@@ -62,7 +62,7 @@ where live parsing causes noticeable UI lag.
 
 ```lua
 use {
-  "your-username/telescope-cached-headings.nvim",
+  "Chiarandini/telescope-cached-headings.nvim",
   requires = {
     "nvim-telescope/telescope.nvim",
     "nvim-lua/plenary.nvim",

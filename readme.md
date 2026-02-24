@@ -1,6 +1,7 @@
 # telescope-cached-headings.nvim
 
-A Telescope extension for fast heading navigation in large files. Instead of
+A Telescope extension for fast heading navigation in large files. Uses fast parsing
+strategies since ```Telescope headings``` lags on my huge files. Furthermore, instead of
 parsing headings on every invocation, the plugin writes a small cache file on
 first use — making the picker essentially instant on 100k+ line LaTeX documents
 where live parsing causes noticeable UI lag.

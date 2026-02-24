@@ -10,7 +10,7 @@ local LATEX_COMMANDS = {
 }
 
 -- Pre-build LaTeX patterns once so they are not re-created per line
--- Each entry: { pattern_nonstarred, pattern_starred, level }
+-- Each entry: { pattern_nonstarred, pattern_starred, level, cmd }
 local LATEX_PATTERNS = (function()
   local t = {}
   for _, def in ipairs(LATEX_COMMANDS) do
@@ -18,6 +18,7 @@ local LATEX_PATTERNS = (function()
       plain   = "^%s*\\" .. def.cmd .. "%s*{",
       starred = "^%s*\\" .. def.cmd .. "%*%s*{",
       level   = def.level,
+      cmd     = def.cmd,
     })
   end
   return t
@@ -41,12 +42,12 @@ local function parse_latex(line, line_num, include_starred)
     if line:find(pat.plain) then
       local title = latex_title(line)
       if title then
-        return { text = vim.trim(line), title = title, line = line_num, level = pat.level, starred = false }
+        return { text = vim.trim(line), title = title, line = line_num, level = pat.level, kind = pat.cmd, starred = false }
       end
     elseif include_starred and line:find(pat.starred) then
       local title = latex_title(line)
       if title then
-        return { text = vim.trim(line), title = title, line = line_num, level = pat.level, starred = true }
+        return { text = vim.trim(line), title = title, line = line_num, level = pat.level, kind = pat.cmd, starred = true }
       end
     end
   end
@@ -58,13 +59,15 @@ end
 ---@param line_num integer
 ---@return table|nil
 local function parse_markdown(line, line_num)
-  local hashes, title = line:match("^(#{1,6})%s+(.+)$")
-  if hashes then
+  -- NOTE: Lua patterns do not support {n,m} quantifiers; use + and check length.
+  local hashes, title = line:match("^(#+)%s+(.+)$")
+  if hashes and #hashes <= 6 then
     return {
-      text  = vim.trim(line),
-      title = vim.trim(title),
-      line  = line_num,
-      level = #hashes,
+      text    = vim.trim(line),
+      title   = vim.trim(title),
+      line    = line_num,
+      level   = #hashes,
+      kind    = "h" .. #hashes,
       starred = false,
     }
   end
@@ -79,10 +82,11 @@ local function parse_org(line, line_num)
   local stars, title = line:match("^(%*+)%s+(.+)$")
   if stars then
     return {
-      text  = vim.trim(line),
-      title = vim.trim(title),
-      line  = line_num,
-      level = #stars,
+      text    = vim.trim(line),
+      title   = vim.trim(title),
+      line    = line_num,
+      level   = #stars,
+      kind    = "h" .. #stars,
       starred = false,
     }
   end

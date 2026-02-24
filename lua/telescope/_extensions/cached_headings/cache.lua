@@ -74,4 +74,29 @@ M.write_cache = function(cache_path, entries)
   return true, nil
 end
 
+---Delete all cache files managed by this plugin.
+---
+---For the "global" strategy every *.headings file inside the cache directory
+---is removed.  For "local" the files are scattered next to source files, so
+---enumeration is not feasible; the function returns an explanatory message.
+---
+---@param strategy string  "local" | "global"
+---@return integer, string|nil  number of files deleted, error message or nil
+M.wipe_all_caches = function(strategy)
+  if strategy ~= "global" then
+    return 0, "wipe_all is only supported for the 'global' cache strategy. "
+      .. "Delete *.headings files manually from your project directories."
+  end
+
+  local cache_dir = vim.fn.stdpath("data") .. "/cached_headings"
+  local files     = vim.fn.glob(cache_dir .. "/*.headings", false, true)
+  local count     = 0
+  for _, f in ipairs(files) do
+    if vim.fn.delete(f) == 0 then
+      count = count + 1
+    end
+  end
+  return count, nil
+end
+
 return M

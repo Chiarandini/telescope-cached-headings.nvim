@@ -10,6 +10,7 @@ TELESCOPE CACHED HEADINGS
 4. Usage .................... |telescope-cached-headings-usage|
 5. Configuration ............ |telescope-cached-headings-config|
 6. Commands ................. |telescope-cached-headings-commands|
+7. Keybindings .............. |telescope-cached-headings-keybindings|
 
 ==============================================================================
 1. INTRO                                   *telescope-cached-headings-intro*
@@ -173,6 +174,36 @@ include_starred ~
     Force-regenerate the cache for the current file by re-scanning it from
     disk. Use this after making significant structural changes to a file.
     Prints the number of headings found when complete.
+
+:CachedHeadingsWipeAll                          *:CachedHeadingsWipeAll*
+
+    Delete every cache file written by this plugin and print how many were
+    removed.  Useful when you want a guaranteed clean slate — for example
+    after upgrading the plugin or if you suspect stale caches from a previous
+    version.
+
+    The next time you open the picker for any file the cache is regenerated
+    automatically from scratch.
+
+    Note: only supported with `cache_strategy = "global"`.  With `"local"`
+    the cache files are scattered next to your source files; delete them
+    manually (they match the glob `*.headings`).
+
+==============================================================================
+7. KEYBINDINGS                          *telescope-cached-headings-keybindings*
+
+Suggested mappings to add to your Neovim config: >
+
+  -- Open the heading picker
+  vim.keymap.set("n", "<leader>fh",
+    "<cmd>Telescope cached_headings<cr>",
+    { desc = "Find headings (cached)" })
+
+  -- Wipe all caches (re-parsed automatically on next picker open)
+  vim.keymap.set("n", "<leader>fH",
+    "<cmd>CachedHeadingsWipeAll<cr>",
+    { desc = "Wipe all heading caches" })
+<
 
 ==============================================================================
 vim:ft=help:tw=78:

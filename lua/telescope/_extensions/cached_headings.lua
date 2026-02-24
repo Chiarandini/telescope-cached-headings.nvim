@@ -81,6 +81,19 @@ return telescope.register_extension({
       update_cache_for_buf(vim.api.nvim_get_current_buf())
     end, { desc = "Regenerate telescope-cached-headings cache for current file" })
 
+    -- :CachedHeadingsWipeAll — delete every cache file written by this plugin
+    vim.api.nvim_create_user_command("CachedHeadingsWipeAll", function()
+      local count, err = cache.wipe_all_caches(config.cache_strategy)
+      if err then
+        vim.notify("[cached_headings] " .. err, vim.log.levels.WARN)
+      else
+        vim.notify(
+          string.format("[cached_headings] Wiped %d cache file(s).", count),
+          vim.log.levels.INFO
+        )
+      end
+    end, { desc = "Delete all telescope-cached-headings cache files" })
+
     -- Auto-update on save when opt-in
     if config.auto_update then
       vim.api.nvim_create_autocmd("BufWritePost", {

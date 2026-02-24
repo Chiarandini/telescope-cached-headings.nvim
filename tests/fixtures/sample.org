@@ -1,0 +1,21 @@
+* Top Level Heading
+
+Some text here.
+
+** Second Level
+
+More text.
+
+*** Third Level
+
+Even more.
+
+**** Fourth Level
+
+Deep content.
+
+* Another Top Level
+
+* Heading with trailing space
+
+*not-a-heading (missing space)

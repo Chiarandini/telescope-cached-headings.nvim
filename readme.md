@@ -14,6 +14,7 @@ where live parsing causes noticeable UI lag.
 - **Starred LaTeX variants** (`\section*`, etc.) via opt-in config flag
 - **Two cache strategies**: global (tidy) or local (inspectable)
 - **Auto-update** on save via `BufWritePost` (opt-in)
+- **Wipe all caches** in one command when you need a clean slate
 
 ## Requirements
 
@@ -74,12 +75,16 @@ require("telescope").setup({
 require("telescope").load_extension("cached_headings")
 ```
 
-Suggested keybinding:
+Suggested keybindings:
 
 ```lua
 vim.keymap.set("n", "<leader>fh",
   "<cmd>Telescope cached_headings<cr>",
   { desc = "Find headings (cached)" })
+
+vim.keymap.set("n", "<leader>fH",
+  "<cmd>CachedHeadingsWipeAll<cr>",
+  { desc = "Wipe all heading caches" })
 ```
 
 ## Usage
@@ -98,6 +103,12 @@ To force-rebuild the cache after making structural changes:
 
 ```
 :CachedHeadingsUpdate
+```
+
+To delete every cache file and start fresh:
+
+```
+:CachedHeadingsWipeAll
 ```
 
 ## Smart Jump

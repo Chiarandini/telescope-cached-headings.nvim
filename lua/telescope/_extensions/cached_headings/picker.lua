@@ -13,6 +13,22 @@ local utils  = require("telescope._extensions.cached_headings.utils")
 -- Indentation prefix per heading level (up to 6 levels)
 local INDENT = { "", "  ", "    ", "      ", "        ", "          " }
 
+-- LaTeX level → command name (mirrors parser.lua's LATEX_COMMANDS)
+local LATEX_LEVEL_KINDS = { "part", "chapter", "section", "subsection", "subsubsection" }
+
+---Return the heading kind string for an entry, falling back to derivation
+---when the `kind` field is absent (entries read from an old-format cache).
+---@param entry table  { kind?, level, ... }
+---@param filetype string
+---@return string
+local function get_kind(entry, filetype)
+  if entry.kind then return entry.kind end
+  if filetype == "tex" then
+    return LATEX_LEVEL_KINDS[entry.level] or ("level" .. entry.level)
+  end
+  return "h" .. entry.level
+end
+
 ---Extract a clean, human-readable title from a cached heading line.
 ---For display in the picker only — smart jump always uses the raw text.
 ---@param text string  Raw heading line as stored in cache.
@@ -31,17 +47,16 @@ local function extract_title(text, filetype)
 end
 
 ---Build the display string shown in the Telescope prompt.
----Format: "<indent><title>"  (starred entries get a trailing " *")
----@param entry table  { text, level, starred, ... }
+---Format: "<indent>[kind] <title>"  (starred entries get a trailing " *")
+---@param entry table  { text, level, kind?, starred, ... }
 ---@param filetype string
 ---@return string
 local function make_display(entry, filetype)
   local indent = INDENT[math.min(entry.level, #INDENT)] or ""
   local title  = extract_title(entry.text, filetype)
-  if entry.starred then
-    return indent .. title .. " *"
-  end
-  return indent .. title
+  local kind   = get_kind(entry, filetype)
+  local suffix = entry.starred and " *" or ""
+  return indent .. "[" .. kind .. "] " .. title .. suffix
 end
 
 ---Open the cached-headings Telescope picker for the current buffer.
@@ -95,17 +110,18 @@ M.open = function(opts, config)
     finder = finders.new_table({
       results = entries,
       entry_maker = function(entry)
-        -- parser entries already have { text, level, starred }
-        -- cache entries are { text, level } — starred defaults to false
+        -- parser entries have { text, level, kind, starred }
+        -- cache entries have { text, level } — kind and starred default gracefully
         local starred = entry.starred or false
-        local display = make_display(
-          { text = entry.text, level = entry.level, starred = starred },
-          filetype
-        )
+        local e       = { text = entry.text, level = entry.level, kind = entry.kind, starred = starred }
+        local display = make_display(e, filetype)
+        local kind    = get_kind(e, filetype)
+        local title   = extract_title(entry.text, filetype)
         return {
           value    = entry,
           display  = display,
-          ordinal  = extract_title(entry.text, filetype),
+          -- Prepend kind so users can pre-filter by typing e.g. "section" or "h2"
+          ordinal  = kind .. " " .. title,
           filename = filepath,
           lnum     = entry.line,
         }

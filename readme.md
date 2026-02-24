@@ -26,7 +26,7 @@ where live parsing causes noticeable UI lag.
 
  1. Streaming with io.lines(): The file is never fully loaded into memory. io.lines() is a lazy iterator that reads one line at a time from the C standard library — no Lua table holding 100k lines, no calling vim.fn.readfile()
 
-  2. Pre-compiled patterns
+  2. Pre-compiled patterns:
   The LaTeX patterns are built once at module load time via an IIFE and stored in LATEX_PATTERNS. Inside the loop,
   line:find(pat.plain) reuses the same compiled pattern string on every line rather than constructing a new pattern string per line.
 
@@ -35,7 +35,7 @@ where live parsing causes noticeable UI lag.
   so it bails out immediately on the vast majority of lines (anything that doesn't start
   with \section etc.) — the match fails in O(1) on non-heading lines.
 
-  4. Caching
+  4. Caching:
   After the first scan, results are written to a flat text file (line|level|text format). Subsequent opens read the cache instead of rescanning. The cache is only invalidated when the file's mtime changes (or manually).
 
   So for a 100k-line LaTeX file, most of the lines are rejected by a single anchored ```string.find``` call, the rest of the file is streamed without ever sitting in memory, and after the first open it's just a cache read.

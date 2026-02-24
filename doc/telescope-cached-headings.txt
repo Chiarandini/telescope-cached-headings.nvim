@@ -1,0 +1,178 @@
+*telescope-cached-headings.txt*   Fast heading navigation for large files
+
+                                                   *telescope-cached-headings*
+
+TELESCOPE CACHED HEADINGS
+
+1. Intro .................... |telescope-cached-headings-intro|
+2. Requirements ............. |telescope-cached-headings-requirements|
+3. Setup .................... |telescope-cached-headings-setup|
+4. Usage .................... |telescope-cached-headings-usage|
+5. Configuration ............ |telescope-cached-headings-config|
+6. Commands ................. |telescope-cached-headings-commands|
+
+==============================================================================
+1. INTRO                                   *telescope-cached-headings-intro*
+
+telescope-cached-headings.nvim is a Telescope extension for fast heading
+navigation in massive files (100k+ lines). Instead of parsing headings on
+every invocation, the plugin writes a small cache file on first use. On
+subsequent openings only the cache is read, making the picker essentially
+instant.
+
+Supported filetypes out of the box:
+
+  • LaTeX   (`tex`)       – \part, \chapter, \section, \subsection,
+                            \subsubsection  (and optionally starred variants)
+  • Markdown (`markdown`) – # through ######
+  • Org-mode (`org`)      – * through ******
+
+==============================================================================
+2. REQUIREMENTS                        *telescope-cached-headings-requirements*
+
+  • nvim-telescope/telescope.nvim
+  • nvim-lua/plenary.nvim
+
+==============================================================================
+3. SETUP                                    *telescope-cached-headings-setup*
+
+Load and configure the extension inside your Neovim config: >
+
+  require("telescope").setup({
+    extensions = {
+      cached_headings = {
+        -- all keys are optional; defaults are shown
+        cache_strategy    = "global",
+        allowed_filetypes = { "tex", "markdown", "org" },
+        auto_update       = false,
+        enable_smart_jump = true,
+        smart_jump_window = 200,
+        include_starred   = false,
+      },
+    },
+  })
+
+  require("telescope").load_extension("cached_headings")
+<
+
+Suggested keybinding: >
+
+  vim.keymap.set("n", "<leader>fh",
+    "<cmd>Telescope cached_headings<cr>",
+    { desc = "Find headings (cached)" })
+<
+
+==============================================================================
+4. USAGE                                    *telescope-cached-headings-usage*
+
+Open the picker: >
+
+  :Telescope cached_headings
+<
+
+  • The first time you open the picker for a file the cache is generated
+    automatically. Subsequent opens read the cache directly.
+
+  • Headings are displayed with level-based indentation so the document
+    hierarchy is immediately visible.
+
+  • Selecting a heading performs a *smart jump* (see |cached_headings-smart-jump|).
+
+                                        *cached_headings-smart-jump*
+Smart Jump ~
+
+When you select a heading the plugin checks whether the cached line number
+still holds the expected text in the live buffer.
+
+  Match    The heading is exactly where the cache says it is. Jump silently.
+
+  Shifted  The heading is not at the cached line, but is found within
+           ±`smart_jump_window` lines. Jump to the new position and update
+           the cache entry automatically.
+           Message: "Heading shifted. Cache auto-updated."
+
+  Missing  The heading cannot be found anywhere in the search window. Jump
+           to the original cached line and warn the user.
+           Message: "[Warning] Heading not found at cached location. Please
+           run :CachedHeadingsUpdate."
+
+Set `enable_smart_jump = false` to skip verification and jump directly to the
+cached line number without any checks.
+
+==============================================================================
+5. CONFIGURATION                          *telescope-cached-headings-config*
+
+All options are passed in the `extensions.cached_headings` table during
+`telescope.setup()`.
+
+cache_strategy ~
+    Type:    string
+    Default: `"global"`
+
+    Controls where cache files are stored.
+
+    `"global"` (recommended)
+      Stores all caches in Neovim's standard data directory:
+        stdpath("data")/cached_headings/<hash>.headings
+      Keeps your project directories clean.
+
+    `"local"`
+      Creates a hidden file next to the source file:
+        /path/to/dir/.filename.ext.headings
+      Useful if you want to inspect or share the cache. Remember to add
+      `*.headings` to your `.gitignore`.
+
+allowed_filetypes ~
+    Type:    string[]
+    Default: `{ "tex", "markdown", "org" }`
+
+    List of Neovim filetype strings for which the plugin is active.
+    The picker and update commands do nothing for files not in this list.
+
+auto_update ~
+    Type:    boolean
+    Default: `false`
+
+    When `true`, the cache is regenerated every time you save a supported
+    file (`BufWritePost`).
+    WARNING: On very large files this may cause a brief pause on save.
+
+enable_smart_jump ~
+    Type:    boolean
+    Default: `true`
+
+    See |cached_headings-smart-jump| for a full description.
+    Set to `false` to always jump straight to the cached line number.
+
+smart_jump_window ~
+    Type:    integer
+    Default: `200`
+
+    The number of lines to search on each side of the cached position when
+    a heading is not found at its expected location.
+    Only relevant when `enable_smart_jump = true`.
+
+include_starred ~
+    Type:    boolean
+    Default: `false`
+
+    LaTeX only. When `true`, starred sectioning commands such as
+    `\section*`, `\subsection*`, etc. are included in the picker and cache.
+    Starred entries are shown with a trailing ` *` in the picker display.
+
+==============================================================================
+6. COMMANDS                              *telescope-cached-headings-commands*
+
+:Telescope cached_headings                    *:Telescope-cached_headings*
+
+    Open the Telescope heading picker for the current buffer.
+    Generates the cache on first use for a given file.
+
+:CachedHeadingsUpdate                            *:CachedHeadingsUpdate*
+
+    Force-regenerate the cache for the current file by re-scanning it from
+    disk. Use this after making significant structural changes to a file.
+    Prints the number of headings found when complete.
+
+==============================================================================
+vim:ft=help:tw=78:

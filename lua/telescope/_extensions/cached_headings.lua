@@ -28,6 +28,10 @@ local DEFAULT_CONFIG = {
   scan_includes          = false,
   recursive_limit        = 5,    -- max include nesting depth (guards circular deps)
   ignore_include_pattern = "",   -- Lua pattern; matching include paths are skipped
+
+  -- Phase 3: subfile toggle
+  root_file          = "",        -- manual override: absolute path to the root .tex file
+  subfile_toggle_key = "<C-g>",   -- key to toggle local↔global mode inside the picker
 }
 
 -- Module-level config table populated during setup()

@@ -17,6 +17,12 @@ where live parsing causes noticeable UI lag.
 - **Two cache strategies**: global (tidy) or local (inspectable)
 - **Auto-update** on save via `BufWritePost` (opt-in)
 - **Wipe all caches** in one command when you need a clean slate
+- **Multi-file LaTeX** — follow `\input`, `\include`, and `\subfile` directives
+  and show all headings from the entire document in a single unified picker
+- **Subfile toggle** — when editing a LaTeX subfile (using the `subfiles` package),
+  press a key to instantly switch between a local view of just your subfile's
+  headings and a full document view, with the cursor pre-positioned on the first
+  heading from your subfile
 
 ## Requirements
 
@@ -37,7 +43,7 @@ where live parsing causes noticeable UI lag.
   with \section etc.) — the match fails in O(1) on non-heading lines.
 
   4. Caching:
-  After the first scan, results are written to a flat text file (line|level|text format). Subsequent opens read the cache instead of rescanning. The cache is only invalidated when the file's mtime changes (or manually).
+  After the first scan, results are written to a flat text file. Subsequent opens read the cache instead of rescanning. The cache is only invalidated when the file's mtime changes (or manually).
 
   So for a 100k-line LaTeX file, most of the lines are rejected by a single anchored ```string.find``` call, the rest of the file is streamed without ever sitting in memory, and after the first open it's just a cache read.
 
@@ -88,6 +94,15 @@ require("telescope").setup({
       enable_smart_jump = true,
       smart_jump_window = 200,
       include_starred   = false,
+
+      -- Multi-file LaTeX: follow \input / \include / \subfile directives
+      scan_includes          = false,
+      recursive_limit        = 5,
+      ignore_include_pattern = "",
+
+      -- Subfile toggle: manual root override and toggle key
+      root_file          = "",
+      subfile_toggle_key = "<C-g>",
     },
   },
 })
@@ -145,6 +160,53 @@ still holds the expected heading text in the live buffer:
 Set `enable_smart_jump = false` to skip verification and always jump directly
 to the cached line number.
 
+## Multi-file LaTeX
+
+When `scan_includes = true`, the picker follows `\input`, `\include`, and
+`\subfile` directives and shows all headings from the entire document tree in
+document order. Each heading from an included file is annotated with its
+relative filename (shown in a dimmed colour), so you can filter by filename as
+well as heading text.
+
+```lua
+cached_headings = {
+  scan_includes          = true,
+  recursive_limit        = 5,   -- max nesting depth
+  ignore_include_pattern = "appendix",  -- skip paths matching this Lua pattern
+}
+```
+
+Jumping to a heading in an included file opens that file automatically.
+
+## Subfile Toggle
+
+If you work with the LaTeX [`subfiles`](https://ctan.org/pkg/subfiles) package,
+the plugin detects when you are editing a subfile by looking for a
+`\documentclass[root.tex]{subfiles}` declaration near the top of the file.
+
+When detected, the picker title changes to indicate the current mode and the
+available toggle key:
+
+- **Local mode** (default): shows only the current subfile's headings —
+  title reads `Headings (subfile) [<C-g>: full doc]`
+- **Global mode**: shows the full document TOC scanned from the root file,
+  with the cursor pre-positioned on the first heading from your subfile —
+  title reads `Headings (full doc) [<C-g>: subfile]`
+
+Press the toggle key (`<C-g>` by default) inside the picker to switch between
+modes. Press it again to return.
+
+If your root file is not resolvable from `\documentclass[...]` (e.g. the
+argument is a variable or an unusual path), you can set `root_file` to an
+absolute path as a fallback:
+
+```lua
+cached_headings = {
+  root_file          = "/home/user/thesis/main.tex",
+  subfile_toggle_key = "<C-g>",
+}
+```
+
 ## Configuration Reference
 
 | Option | Type | Default | Description |
@@ -155,25 +217,35 @@ to the cached line number.
 | `enable_smart_jump` | `boolean` | `true` | Search for shifted headings instead of jumping blindly |
 | `smart_jump_window` | `integer` | `200` | Lines to search on each side of the cached position |
 | `include_starred` | `boolean` | `false` | Include LaTeX starred variants (`\section*`, etc.) |
+| `scan_includes` | `boolean` | `false` | Follow `\input`/`\include`/`\subfile` and show the whole document tree |
+| `recursive_limit` | `integer` | `5` | Maximum include nesting depth (guards against circular includes) |
+| `ignore_include_pattern` | `string` | `""` | Lua pattern — include paths matching it are skipped |
+| `root_file` | `string` | `""` | Absolute path to the root `.tex` file; fallback when auto-detection fails |
+| `subfile_toggle_key` | `string` | `"<C-g>"` | Key to toggle between local and full-document view inside the picker |
 
 ## Cache Format
 
-Cache files are plain text — one heading per line:
+Cache files are plain text and human-readable. Single-file caches use one line
+per heading:
 
 ```
 line_number|level|full_heading_text
 ```
 
-Example:
+Multi-file caches (produced when `scan_includes = true`) use a versioned format
+with dependency metadata:
 
 ```
-12|1|\part{Foundations}
-45|3|\section{Introduction}
-78|4|\subsection{Motivation}
+# v2
+# dep:chapters/intro.tex=1718000000
+# dep:chapters/conclusion.tex=1718000001
+|12|1|\part{Foundations}
+chapters/intro.tex|3|3|\section{Introduction}
+chapters/intro.tex|10|4|\subsection{Motivation}
 ```
 
-This format is human-readable and trivial to parse. For `"local"` strategy the
-file is placed next to your source file (add `*.headings` to `.gitignore`).
+For the `"local"` cache strategy the file is placed next to your source file
+(add `*.headings` to `.gitignore`).
 
 ## Help
 

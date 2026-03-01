@@ -46,7 +46,7 @@ local function extract_title(text, filetype)
   return text
 end
 
----Build the display string shown in the Telescope prompt.
+---Build the heading portion of the display string (without filename).
 ---Format: "<indent>[kind] <title>"  (starred entries get a trailing " *")
 ---@param entry table  { text, level, kind?, starred, ... }
 ---@param filetype string
@@ -66,6 +66,7 @@ M.open = function(opts, config)
   local bufnr    = vim.api.nvim_get_current_buf()
   local filepath = vim.api.nvim_buf_get_name(bufnr)
   local filetype = vim.bo[bufnr].filetype
+  local root_dir = vim.fn.fnamemodify(filepath, ":h")
 
   if filepath == "" then
     vim.notify("[cached_headings] No file associated with current buffer.", vim.log.levels.WARN)
@@ -90,13 +91,19 @@ M.open = function(opts, config)
   end
 
   local cache_path = cache.get_cache_path(filepath, config.cache_strategy)
-  local entries    = cache.read_cache(cache_path)
+  local entries, is_v2 = cache.read_cache(cache_path, root_dir)
 
   if not entries then
-    -- No cache yet — generate it now
-    local raw = parser.scan_file(filepath, filetype, { include_starred = config.include_starred })
-    cache.write_cache(cache_path, raw)
+    -- No cache yet, or dependencies changed — generate it now
+    local raw, deps = parser.scan_file(filepath, filetype, {
+      include_starred        = config.include_starred,
+      scan_includes          = config.scan_includes,
+      recursive_limit        = config.recursive_limit,
+      ignore_include_pattern = config.ignore_include_pattern,
+    })
+    cache.write_cache(cache_path, raw, deps)
     entries = raw
+    is_v2 = deps ~= nil
   end
 
   if #entries == 0 then
@@ -110,25 +117,47 @@ M.open = function(opts, config)
     finder = finders.new_table({
       results = entries,
       entry_maker = function(entry)
-        -- parser entries have { text, level, kind, starred }
-        -- cache entries have { text, level } — kind and starred default gracefully
+        local source_file = entry.source_file or ""
+        local abs_file    = source_file ~= ""
+          and (root_dir .. "/" .. source_file)
+          or filepath
+
         local starred = entry.starred or false
         local e       = { text = entry.text, level = entry.level, kind = entry.kind, starred = starred }
-        local display = make_display(e, filetype)
-        local kind    = get_kind(e, filetype)
-        local title   = extract_title(entry.text, filetype)
+
+        -- Pre-compute the heading portion (indent + [kind] + title) once.
+        -- The display function captures it in a closure — no re-computation per render.
+        local heading_str = make_display(e, filetype)
+        local kind        = get_kind(e, filetype)
+        local title       = extract_title(entry.text, filetype)
+
         return {
           value    = entry,
-          display  = display,
-          -- Prepend kind so users can pre-filter by typing e.g. "section" or "h2"
-          ordinal  = kind .. " " .. title,
-          filename = filepath,
+
+          -- When source_file is set, append it in a dimmed Comment highlight.
+          -- Telescope calls display(entry_table) → (string, highlight_specs).
+          display  = function(_)
+            if source_file ~= "" then
+              local sep  = "  "
+              local full = heading_str .. sep .. source_file
+              -- Highlight spec: { {start_col, end_col}, hl_group } (0-indexed bytes)
+              return full, { { { #heading_str + #sep, #full }, "Comment" } }
+            end
+            return heading_str, {}
+          end,
+
+          -- Include source_file in ordinal so users can filter by filename
+          ordinal  = source_file ~= ""
+            and (kind .. " " .. title .. " " .. source_file)
+            or  (kind .. " " .. title),
+
+          filename = abs_file,
           lnum     = entry.line,
         }
       end,
     }),
 
-    sorter   = conf.generic_sorter(opts),
+    sorter    = conf.generic_sorter(opts),
     previewer = conf.grep_previewer(opts),
 
     attach_mappings = function(prompt_bufnr, _)
@@ -140,46 +169,83 @@ M.open = function(opts, config)
           return
         end
 
-        local entry = selection.value
+        local entry       = selection.value
+        local source_file = entry.source_file or ""
 
-        if config.enable_smart_jump then
-          local found = utils.verify_or_find(
-            bufnr,
-            entry.line,
-            entry.text,
-            config.smart_jump_window
-          )
+        -- ── Local jump (heading in the root file) ─────────────────────────
+        if source_file == "" then
+          if config.enable_smart_jump then
+            local found = utils.verify_or_find(
+              bufnr,
+              entry.line,
+              entry.text,
+              config.smart_jump_window
+            )
 
-          if found == entry.line then
-            -- Exact match — silent jump
-            vim.api.nvim_win_set_cursor(0, { found, 0 })
-          elseif found then
-            -- Heading shifted — jump and update cache entry
-            vim.api.nvim_win_set_cursor(0, { found, 0 })
-            vim.notify("[cached_headings] Heading shifted. Cache auto-updated.", vim.log.levels.INFO)
+            if found == entry.line then
+              vim.api.nvim_win_set_cursor(0, { found, 0 })
+            elseif found then
+              vim.api.nvim_win_set_cursor(0, { found, 0 })
+              vim.notify("[cached_headings] Heading shifted. Cache auto-updated.", vim.log.levels.INFO)
 
-            -- Re-read, patch the one entry, write back
-            local all = cache.read_cache(cache_path)
-            if all then
-              for _, e in ipairs(all) do
-                if e.line == entry.line and e.text == entry.text then
-                  e.line = found
-                  break
+              -- Patch the one entry in cache, but only for v1 caches.
+              -- v2 caches have multi-file deps; user should run :CachedHeadingsUpdate.
+              if not is_v2 then
+                local all = cache.read_cache(cache_path)
+                if all then
+                  for _, e in ipairs(all) do
+                    if e.line == entry.line and e.text == entry.text then
+                      e.line = found
+                      break
+                    end
+                  end
+                  cache.write_cache(cache_path, all)
                 end
               end
-              cache.write_cache(cache_path, all)
+            else
+              vim.api.nvim_win_set_cursor(0, { entry.line, 0 })
+              vim.notify(
+                "[cached_headings] [Warning] Heading not found at cached location. "
+                  .. "Please run :CachedHeadingsUpdate.",
+                vim.log.levels.WARN
+              )
             end
           else
-            -- Not found anywhere in window — jump to original and warn
             vim.api.nvim_win_set_cursor(0, { entry.line, 0 })
-            vim.notify(
-              "[cached_headings] [Warning] Heading not found at cached location. "
-                .. "Please run :CachedHeadingsUpdate.",
-              vim.log.levels.WARN
-            )
           end
+
+        -- ── Remote jump (heading lives in an included sub-file) ───────────
         else
-          vim.api.nvim_win_set_cursor(0, { entry.line, 0 })
+          local abs_path = root_dir .. "/" .. source_file
+          vim.cmd("edit " .. vim.fn.fnameescape(abs_path))
+          local new_bufnr = vim.api.nvim_get_current_buf()
+
+          if config.enable_smart_jump then
+            local found = utils.verify_or_find(
+              new_bufnr,
+              entry.line,
+              entry.text,
+              config.smart_jump_window
+            )
+            if found then
+              vim.api.nvim_win_set_cursor(0, { found, 0 })
+              if found ~= entry.line then
+                vim.notify(
+                  "[cached_headings] Heading shifted. Run :CachedHeadingsUpdate to refresh.",
+                  vim.log.levels.INFO
+                )
+              end
+            else
+              vim.api.nvim_win_set_cursor(0, { entry.line, 0 })
+              vim.notify(
+                "[cached_headings] [Warning] Heading not found at cached location. "
+                  .. "Please run :CachedHeadingsUpdate.",
+                vim.log.levels.WARN
+              )
+            end
+          else
+            vim.api.nvim_win_set_cursor(0, { entry.line, 0 })
+          end
         end
 
         -- Centre the view on the jumped-to line

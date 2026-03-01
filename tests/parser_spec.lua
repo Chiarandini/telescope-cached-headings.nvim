@@ -241,3 +241,123 @@ describe("parser – edge cases", function()
     assert.are.same({}, r)
   end)
 end)
+
+-- ─── Recursive include scanning (Phase 2) ────────────────────────────────────
+
+describe("parser – latex recursive scan_includes", function()
+  local results, deps
+
+  before_each(function()
+    results, deps = parser.scan_file(
+      fixtures .. "/main.tex",
+      "tex",
+      { scan_includes = true, recursive_limit = 5 }
+    )
+  end)
+
+  it("returns a non-empty table", function()
+    assert.is_true(#results > 0)
+  end)
+
+  it("returns a deps table as second return value", function()
+    assert.is_table(deps)
+  end)
+
+  it("finds headings from the root file", function()
+    local found = false
+    for _, e in ipairs(results) do
+      if e.title == "The Whole Document" then found = true end
+    end
+    assert.is_true(found, "\\part in main.tex not found")
+  end)
+
+  it("finds headings from chapter1.tex (\\include)", function()
+    local found = false
+    for _, e in ipairs(results) do
+      if e.title == "First Chapter" then found = true end
+    end
+    assert.is_true(found, "\\chapter{First Chapter} not found")
+  end)
+
+  it("finds headings from chapter2.tex (\\input)", function()
+    local found = false
+    for _, e in ipairs(results) do
+      if e.title == "Second Chapter" then found = true end
+    end
+    assert.is_true(found, "\\chapter{Second Chapter} not found")
+  end)
+
+  it("root-file headings have source_file = ''", function()
+    for _, e in ipairs(results) do
+      if e.title == "The Whole Document" or e.title == "An Interlude in Main" then
+        assert.equal("", e.source_file, "root entry should have empty source_file")
+      end
+    end
+  end)
+
+  it("sub-file headings have the correct relative source_file", function()
+    for _, e in ipairs(results) do
+      if e.title == "First Chapter" then
+        assert.equal("chapters/chapter1.tex", e.source_file)
+      end
+      if e.title == "Second Chapter" then
+        assert.equal("chapters/chapter2.tex", e.source_file)
+      end
+    end
+  end)
+
+  it("preserves DFS document order", function()
+    -- Expected order of titles:
+    --   The Whole Document (main, \part)
+    --   First Chapter      (chapter1)
+    --   Opening of Chapter One (chapter1)
+    --   Details of First   (chapter1)
+    --   An Interlude in Main (main, \section)
+    --   Second Chapter     (chapter2)
+    --   Another Section    (chapter2)
+    local titles = {}
+    for _, e in ipairs(results) do
+      table.insert(titles, e.title)
+    end
+    assert.equal("The Whole Document",    titles[1])
+    assert.equal("First Chapter",          titles[2])
+    assert.equal("Opening of Chapter One", titles[3])
+    assert.equal("Details of First",       titles[4])
+    assert.equal("An Interlude in Main",   titles[5])
+    assert.equal("Second Chapter",         titles[6])
+    assert.equal("Another Section",        titles[7])
+  end)
+
+  it("deps table contains the included sub-files", function()
+    assert.is_not_nil(deps["chapters/chapter1.tex"], "chapter1.tex not in deps")
+    assert.is_not_nil(deps["chapters/chapter2.tex"], "chapter2.tex not in deps")
+  end)
+
+  it("deps table does NOT contain the root file", function()
+    assert.is_nil(deps[""], "root file should not be in deps")
+    assert.is_nil(deps["main.tex"], "root file should not be in deps")
+  end)
+
+  it("without scan_includes does NOT follow includes", function()
+    local r = parser.scan_file(fixtures .. "/main.tex", "tex", { scan_includes = false })
+    -- Only root-file headings (\part + \section); chapters not followed
+    local titles = {}
+    for _, e in ipairs(r) do table.insert(titles, e.title) end
+    assert.equal(2, #titles)
+    assert.equal("The Whole Document",  titles[1])
+    assert.equal("An Interlude in Main", titles[2])
+  end)
+end)
+
+describe("parser – recursive cycle and depth guard", function()
+  it("scan_includes on a file with no includes returns only that file's headings", function()
+    local r, d = parser.scan_file(
+      fixtures .. "/chapters/chapter1.tex",
+      "tex",
+      { scan_includes = true }
+    )
+    assert.is_table(d)
+    assert.equal(0, vim.tbl_count(d), "no deps expected when no includes found")
+    assert.equal(3, #r)  -- chapter, section, subsection
+  end)
+end)

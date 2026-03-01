@@ -20,6 +20,14 @@ local DEFAULT_CONFIG = {
 
   -- Include LaTeX starred variants: \section*, \subsection*, etc.
   include_starred   = false,
+
+  -- Phase 2: multi-file LaTeX support
+  -- When true, \input / \include / \subfile directives are followed and
+  -- headings from all included files are shown in a single unified picker.
+  -- Only applies to "tex" filetypes. Default false to keep it opt-in.
+  scan_includes          = false,
+  recursive_limit        = 5,    -- max include nesting depth (guards circular deps)
+  ignore_include_pattern = "",   -- Lua pattern; matching include paths are skipped
 }
 
 -- Module-level config table populated during setup()
@@ -55,9 +63,14 @@ local function update_cache_for_buf(bufnr)
     return
   end
 
-  local entries    = parser.scan_file(filepath, filetype, { include_starred = config.include_starred })
+  local entries, deps = parser.scan_file(filepath, filetype, {
+    include_starred        = config.include_starred,
+    scan_includes          = config.scan_includes,
+    recursive_limit        = config.recursive_limit,
+    ignore_include_pattern = config.ignore_include_pattern,
+  })
   local cache_path = cache.get_cache_path(filepath, config.cache_strategy)
-  local ok, err    = cache.write_cache(cache_path, entries)
+  local ok, err    = cache.write_cache(cache_path, entries, deps)
 
   if ok then
     vim.notify(

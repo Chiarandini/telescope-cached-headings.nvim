@@ -349,6 +349,35 @@ describe("parser – latex recursive scan_includes", function()
   end)
 end)
 
+describe("parser – find_root_via_subfiles", function()
+  it("returns nil for a non-existent file", function()
+    assert.is_nil(parser.find_root_via_subfiles("/tmp/__no_such_file__.tex"))
+  end)
+
+  it("returns nil for a file without \\documentclass[...]{subfiles}", function()
+    assert.is_nil(parser.find_root_via_subfiles(fixtures .. "/chapters/chapter1.tex"))
+  end)
+
+  it("detects root path from \\documentclass[../main.tex]{subfiles}", function()
+    local root = parser.find_root_via_subfiles(fixtures .. "/chapters/chapter1_subfile.tex")
+    assert.is_not_nil(root, "should find root via subfiles package declaration")
+    -- Root should resolve to the fixtures/main.tex absolute path
+    assert.is_true(root:find("main.tex", 1, true) ~= nil)
+    assert.equal(1, vim.fn.filereadable(root), "resolved root file should be readable")
+  end)
+
+  it("returns nil when the referenced root file does not exist", function()
+    -- Create a temp file with a non-existent root ref
+    local tmp = vim.fn.tempname() .. ".tex"
+    local f = io.open(tmp, "w")
+    f:write("\\documentclass[../nonexistent_root.tex]{subfiles}\n")
+    f:close()
+    local result = parser.find_root_via_subfiles(tmp)
+    os.remove(tmp)
+    assert.is_nil(result)
+  end)
+end)
+
 describe("parser – recursive cycle and depth guard", function()
   it("scan_includes on a file with no includes returns only that file's headings", function()
     local r, d = parser.scan_file(

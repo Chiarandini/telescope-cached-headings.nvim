@@ -1,7 +1,4 @@
 local telescope = require("telescope")
-local picker    = require("telescope._extensions.cached_headings.picker")
-local cache     = require("telescope._extensions.cached_headings.cache")
-local parser    = require("telescope._extensions.cached_headings.parser")
 
 local DEFAULT_CONFIG = {
   -- "local"  -> hidden file next to your source file
@@ -53,6 +50,8 @@ local config = {}
 ---Called by :CachedHeadingsUpdate and the auto_update autocmd.
 ---@param bufnr integer
 local function update_cache_for_buf(bufnr)
+  local cache  = require("telescope._extensions.cached_headings.cache")
+  local parser = require("telescope._extensions.cached_headings.parser")
   local filepath = vim.api.nvim_buf_get_name(bufnr)
   local filetype = vim.bo[bufnr].filetype
 
@@ -142,7 +141,7 @@ return telescope.register_extension({
 
   exports = {
     cached_headings = function(opts)
-      picker.open(opts or {}, config)
+      require("telescope._extensions.cached_headings.picker").open(opts or {}, config)
     end,
   },
 })

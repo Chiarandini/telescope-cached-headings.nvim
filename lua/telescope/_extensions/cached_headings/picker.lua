@@ -1,15 +1,5 @@
 local M = {}
 
-local actions      = require("telescope.actions")
-local action_state = require("telescope.actions.state")
-local finders      = require("telescope.finders")
-local pickers      = require("telescope.pickers")
-local conf         = require("telescope.config").values
-
-local cache  = require("telescope._extensions.cached_headings.cache")
-local parser = require("telescope._extensions.cached_headings.parser")
-local utils  = require("telescope._extensions.cached_headings.utils")
-
 ---Apply an optional copy transformation to a heading title string.
 ---`transform` may be:
 ---  • nil        – return the title unchanged
@@ -103,6 +93,15 @@ end
 ---@param config table Plugin configuration (merged defaults + user overrides).
 ---@param overrides table|nil  Internal overrides for toggle: { mode, origin_filepath, root_filepath }
 M.open = function(opts, config, overrides)
+  local actions      = require("telescope.actions")
+  local action_state = require("telescope.actions.state")
+  local finders      = require("telescope.finders")
+  local pickers      = require("telescope.pickers")
+  local conf         = require("telescope.config").values
+  local cache  = require("telescope._extensions.cached_headings.cache")
+  local parser = require("telescope._extensions.cached_headings.parser")
+  local utils  = require("telescope._extensions.cached_headings.utils")
+
   local bufnr    = vim.api.nvim_get_current_buf()
   local filepath = vim.api.nvim_buf_get_name(bufnr)
   local filetype = vim.bo[bufnr].filetype

@@ -1,14 +1,26 @@
 local M = {}
 
-local actions      = require("telescope.actions")
-local action_state = require("telescope.actions.state")
-local finders      = require("telescope.finders")
-local pickers      = require("telescope.pickers")
-local conf         = require("telescope.config").values
-
-local cache  = require("telescope._extensions.cached_headings.cache")
-local parser = require("telescope._extensions.cached_headings.parser")
-local utils  = require("telescope._extensions.cached_headings.utils")
+---Apply an optional copy transformation to a heading title string.
+---`transform` may be:
+---  • nil        – return the title unchanged
+---  • table      – map of prefix strings to format strings (with %s)
+---  • function   – called with the title, must return the transformed string
+---@param title     string
+---@param transform table|function|nil
+---@return string
+local function apply_transform(title, transform)
+  if not transform then return title end
+  if type(transform) == "function" then
+    return transform(title) or title
+  elseif type(transform) == "table" then
+    for prefix, fmt in pairs(transform) do
+      if vim.startswith(title, prefix) then
+        return string.format(fmt, title)
+      end
+    end
+  end
+  return title
+end
 
 -- Indentation prefix per heading level (up to 6 levels)
 local INDENT = { "", "  ", "    ", "      ", "        ", "          " }
@@ -81,6 +93,15 @@ end
 ---@param config table Plugin configuration (merged defaults + user overrides).
 ---@param overrides table|nil  Internal overrides for toggle: { mode, origin_filepath, root_filepath }
 M.open = function(opts, config, overrides)
+  local actions      = require("telescope.actions")
+  local action_state = require("telescope.actions.state")
+  local finders      = require("telescope.finders")
+  local pickers      = require("telescope.pickers")
+  local conf         = require("telescope.config").values
+  local cache  = require("telescope._extensions.cached_headings.cache")
+  local parser = require("telescope._extensions.cached_headings.parser")
+  local utils  = require("telescope._extensions.cached_headings.utils")
+
   local bufnr    = vim.api.nvim_get_current_buf()
   local filepath = vim.api.nvim_buf_get_name(bufnr)
   local filetype = vim.bo[bufnr].filetype
@@ -293,6 +314,21 @@ M.open = function(opts, config, overrides)
         map("i", toggle_key, toggle_fn)
         map("n", toggle_key, toggle_fn)
       end
+
+      -- Copy heading title to system clipboard
+      local copy_key = config.copy_label_key or "<C-y>"
+      local copy_fn = function()
+        local selection = action_state.get_selected_entry()
+        if not selection then return end
+        local title = extract_title(selection.value.text, filetype)
+        local text  = apply_transform(title, config.copy_transform)
+        vim.fn.setreg("+", text)
+        vim.fn.setreg('"', text)
+        actions.close(prompt_bufnr)
+        vim.notify('[cached_headings] Copied "' .. text .. '" to clipboard.', vim.log.levels.INFO)
+      end
+      map("i", copy_key, copy_fn)
+      map("n", copy_key, copy_fn)
 
       return true
     end,

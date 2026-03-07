@@ -1,7 +1,4 @@
 local telescope = require("telescope")
-local picker    = require("telescope._extensions.cached_headings.picker")
-local cache     = require("telescope._extensions.cached_headings.cache")
-local parser    = require("telescope._extensions.cached_headings.parser")
 
 local DEFAULT_CONFIG = {
   -- "local"  -> hidden file next to your source file
@@ -32,6 +29,16 @@ local DEFAULT_CONFIG = {
   -- Phase 3: subfile toggle
   root_file          = "",        -- manual override: absolute path to the root .tex file
   subfile_toggle_key = "<C-g>",   -- key to toggle local↔global mode inside the picker
+
+  -- Copy heading title to system clipboard without opening the file
+  copy_label_key = "<C-y>",       -- key to yank the heading title into the + register
+
+  -- Optional transformation applied to the heading title before it is copied.
+  -- Accepts either:
+  --   • a table  { ["prefix"] = "format string with %s" }
+  --   • a function(title: string) -> string
+  -- When nil (default) the raw heading title is copied unchanged.
+  copy_transform = nil,
 }
 
 -- Module-level config table populated during setup()
@@ -43,6 +50,8 @@ local config = {}
 ---Called by :CachedHeadingsUpdate and the auto_update autocmd.
 ---@param bufnr integer
 local function update_cache_for_buf(bufnr)
+  local cache  = require("telescope._extensions.cached_headings.cache")
+  local parser = require("telescope._extensions.cached_headings.parser")
   local filepath = vim.api.nvim_buf_get_name(bufnr)
   local filetype = vim.bo[bufnr].filetype
 
@@ -132,7 +141,7 @@ return telescope.register_extension({
 
   exports = {
     cached_headings = function(opts)
-      picker.open(opts or {}, config)
+      require("telescope._extensions.cached_headings.picker").open(opts or {}, config)
     end,
   },
 })

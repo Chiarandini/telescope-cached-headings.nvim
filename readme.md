@@ -23,6 +23,9 @@ where live parsing causes noticeable UI lag.
   press a key to instantly switch between a local view of just your subfile's
   headings and a full document view, with the cursor pre-positioned on the first
   heading from your subfile
+- **Copy with transform** — press a key inside the picker to copy the selected
+  heading's title to the system clipboard; an optional `copy_transform` hook lets
+  you wrap or reformat it before copying
 
 ## Requirements
 
@@ -103,6 +106,11 @@ require("telescope").setup({
       -- Subfile toggle: manual root override and toggle key
       root_file          = "",
       subfile_toggle_key = "<C-g>",
+
+      -- Copy heading title to clipboard
+      copy_label_key = "<C-y>",
+      -- copy_transform: nil (raw title), a prefix→format table, or a function.
+      -- copy_transform = function(title) return "[[" .. title .. "]]" end,
     },
   },
 })
@@ -207,6 +215,37 @@ cached_headings = {
 }
 ```
 
+## Copy Heading
+
+Press `copy_label_key` (default `<C-y>`) inside the picker to copy the selected
+heading's title to the system clipboard (`+` register) without jumping to the
+file. The copied text is the clean, extracted title — e.g. `Introduction` from
+`\section{Introduction}` or `## Introduction`.
+
+### `copy_transform`
+
+An optional hook that transforms the title string before it is placed in the
+clipboard. Accepts two forms:
+
+**Table** — map title prefixes to Lua format strings (`%s` is replaced with the
+full title):
+
+```lua
+copy_transform = {
+  ["Appendix"] = "appendix~\\ref{%s}",
+},
+```
+
+**Function** — for any transformation logic:
+
+```lua
+copy_transform = function(title)
+  return "[[" .. title .. "]]"  -- wiki-link style
+end,
+```
+
+When `copy_transform` is `nil` (the default) the raw extracted title is copied.
+
 ## Configuration Reference
 
 | Option | Type | Default | Description |
@@ -222,6 +261,8 @@ cached_headings = {
 | `ignore_include_pattern` | `string` | `""` | Lua pattern — include paths matching it are skipped |
 | `root_file` | `string` | `""` | Absolute path to the root `.tex` file; fallback when auto-detection fails |
 | `subfile_toggle_key` | `string` | `"<C-g>"` | Key to toggle between local and full-document view inside the picker |
+| `copy_label_key` | `string` | `"<C-y>"` | Key to copy the selected heading title to the system clipboard without opening the file |
+| `copy_transform` | `table\|function\|nil` | `nil` | Transform applied to the heading title before copying; see [Copy Heading](#copy-heading) |
 
 ## Cache Format
 

@@ -8,9 +8,13 @@ TELESCOPE CACHED HEADINGS
 2. Requirements ............. |telescope-cached-headings-requirements|
 3. Setup .................... |telescope-cached-headings-setup|
 4. Usage .................... |telescope-cached-headings-usage|
-5. Configuration ............ |telescope-cached-headings-config|
-6. Commands ................. |telescope-cached-headings-commands|
-7. Keybindings .............. |telescope-cached-headings-keybindings|
+5. Smart Jump ............... |telescope-cached-headings-smart-jump|
+6. Multi-file LaTeX ......... |telescope-cached-headings-multifile|
+7. Subfile Toggle ........... |telescope-cached-headings-subfile|
+8. Copy Heading ............. |telescope-cached-headings-copy|
+9. Configuration ............ |telescope-cached-headings-config|
+10. Commands ................ |telescope-cached-headings-commands|
+11. Keybindings ............. |telescope-cached-headings-keybindings|
 
 ==============================================================================
 1. INTRO                                   *telescope-cached-headings-intro*
@@ -49,6 +53,19 @@ Load and configure the extension inside your Neovim config: >
         enable_smart_jump = true,
         smart_jump_window = 200,
         include_starred   = false,
+
+        -- Multi-file LaTeX: follow \input / \include / \subfile directives
+        scan_includes          = false,
+        recursive_limit        = 5,
+        ignore_include_pattern = "",
+
+        -- Subfile toggle
+        root_file          = "",
+        subfile_toggle_key = "<C-g>",
+
+        -- Copy heading title to clipboard
+        copy_label_key = "<C-y>",
+        copy_transform = nil,  -- table, function, or nil; see |cached-headings-copy|
       },
     },
   })
@@ -77,10 +94,21 @@ Open the picker: >
   • Headings are displayed with level-based indentation so the document
     hierarchy is immediately visible.
 
-  • Selecting a heading performs a *smart jump* (see |cached_headings-smart-jump|).
+  • Selecting a heading performs a smart jump
+    (see |telescope-cached-headings-smart-jump|).
 
-                                        *cached_headings-smart-jump*
-Smart Jump ~
+To force-rebuild the cache after making structural changes: >
+
+  :CachedHeadingsUpdate
+<
+
+To delete every cache file and start fresh: >
+
+  :CachedHeadingsWipeAll
+<
+
+==============================================================================
+5. SMART JUMP                        *telescope-cached-headings-smart-jump*
 
 When you select a heading the plugin checks whether the cached line number
 still holds the expected text in the live buffer.
@@ -90,18 +118,97 @@ still holds the expected text in the live buffer.
   Shifted  The heading is not at the cached line, but is found within
            ±`smart_jump_window` lines. Jump to the new position and update
            the cache entry automatically.
-           Message: "Heading shifted. Cache auto-updated."
+           Message: "Heading shifted. Run :CachedHeadingsUpdate."
 
   Missing  The heading cannot be found anywhere in the search window. Jump
            to the original cached line and warn the user.
-           Message: "[Warning] Heading not found at cached location. Please
-           run :CachedHeadingsUpdate."
+           Message: "Heading not found. Run :CachedHeadingsUpdate."
 
 Set `enable_smart_jump = false` to skip verification and jump directly to the
 cached line number without any checks.
 
 ==============================================================================
-5. CONFIGURATION                          *telescope-cached-headings-config*
+6. MULTI-FILE LATEX                   *telescope-cached-headings-multifile*
+
+When `scan_includes = true` the picker follows `\input`, `\include`, and
+`\subfile` directives and shows all headings from the entire document tree
+in document order. Each heading from an included file is annotated with its
+relative filename (shown in a dimmed colour), so you can filter by filename
+as well as heading text.
+
+Example configuration: >
+
+  cached_headings = {
+    scan_includes          = true,
+    recursive_limit        = 5,          -- max nesting depth
+    ignore_include_pattern = "appendix", -- skip paths matching this pattern
+  }
+<
+
+Jumping to a heading in an included file opens that file automatically.
+
+==============================================================================
+7. SUBFILE TOGGLE                      *telescope-cached-headings-subfile*
+
+When editing a LaTeX subfile (using the `subfiles` package), the plugin
+detects the root file by looking for a `\documentclass[root.tex]{subfiles}`
+declaration near the top of the current file.
+
+When detected, the picker title reflects the current mode and the toggle key:
+
+  Local mode (default) ~
+    Shows only the current subfile's headings. Title: >
+      Headings (subfile) [<C-g>: full doc]
+<
+  Global mode ~
+    Shows the full document TOC from the root file, with the cursor
+    pre-positioned on the first heading from your subfile. Title: >
+      Headings (full doc) [<C-g>: subfile]
+<
+Press `subfile_toggle_key` (default `<C-g>`) inside the picker to switch
+between modes.
+
+Manual root override: >
+
+  cached_headings = {
+    root_file          = "/home/user/thesis/main.tex",
+    subfile_toggle_key = "<C-g>",
+  }
+<
+
+==============================================================================
+8. COPY HEADING                          *telescope-cached-headings-copy*
+                                              *cached-headings-copy*
+
+Press `copy_label_key` (default `<C-y>`) inside the picker to copy the
+selected heading's title to the system clipboard (`+` register) without
+opening the file. The copied text is the clean extracted title — e.g.
+`Introduction` from `\section{Introduction}` or `## Introduction`.
+
+copy_transform ~
+
+An optional hook that transforms the title before it is placed in the
+clipboard. Accepts two forms:
+
+Table — map title prefixes to Lua format strings (`%s` is the full title): >
+
+  copy_transform = {
+    ["Appendix"] = "appendix~\\ref{%s}",
+  },
+<
+
+Function — for any transformation logic: >
+
+  copy_transform = function(title)
+    return "[[" .. title .. "]]"  -- wiki-link style
+  end,
+<
+
+When `copy_transform` is `nil` (the default) the raw extracted title is
+copied.
+
+==============================================================================
+9. CONFIGURATION                          *telescope-cached-headings-config*
 
 All options are passed in the `extensions.cached_headings` table during
 `telescope.setup()`.
@@ -161,8 +268,74 @@ include_starred ~
     `\section*`, `\subsection*`, etc. are included in the picker and cache.
     Starred entries are shown with a trailing ` *` in the picker display.
 
+scan_includes ~
+    Type:    boolean
+    Default: `false`
+
+    LaTeX only. When `true`, `\input`, `\include`, and `\subfile` directives
+    are followed and headings from all referenced files are shown in a single
+    unified picker in document order.
+    See |telescope-cached-headings-multifile|.
+
+recursive_limit ~
+    Type:    integer
+    Default: `5`
+
+    Maximum include nesting depth when `scan_includes = true`. Guards against
+    circular includes.
+
+ignore_include_pattern ~
+    Type:    string
+    Default: `""`
+
+    A Lua pattern string. Include paths that match this pattern are skipped
+    during multi-file scanning. Empty string disables filtering.
+
+root_file ~
+    Type:    string
+    Default: `""`
+
+    Absolute path to the root `.tex` file. Used as a manual fallback when
+    the `\documentclass[...]{subfiles}` heuristic fails or is non-trivial.
+    See |telescope-cached-headings-subfile|.
+
+subfile_toggle_key ~
+    Type:    string
+    Default: `"<C-g>"`
+
+    Key (in both insert and normal mode) to toggle between local (subfile)
+    and global (full document) view inside the picker. Only active when the
+    plugin has detected a root file that differs from the file you are
+    editing.
+
+copy_label_key ~
+    Type:    string
+    Default: `"<C-y>"`
+
+    Key (in both insert and normal mode) to copy the selected heading's
+    extracted title to the system clipboard (`+` register) without
+    navigating to the file.
+
+copy_transform ~
+    Type:    table | function | nil
+    Default: `nil`
+
+    Optional transformation applied to the heading title before it is placed
+    in the clipboard.
+
+    When a table, keys are title-prefix strings and values are Lua format
+    strings where `%s` is replaced by the full title. The first matching
+    prefix wins; unmatched titles are copied unchanged.
+
+    When a function it receives the title string and must return the
+    transformed string.
+
+    When `nil` the raw extracted title is copied.
+
+    See |telescope-cached-headings-copy| for full examples.
+
 ==============================================================================
-6. COMMANDS                              *telescope-cached-headings-commands*
+10. COMMANDS                             *telescope-cached-headings-commands*
 
 :Telescope cached_headings                    *:Telescope-cached_headings*
 
@@ -190,7 +363,7 @@ include_starred ~
     manually (they match the glob `*.headings`).
 
 ==============================================================================
-7. KEYBINDINGS                          *telescope-cached-headings-keybindings*
+11. KEYBINDINGS                         *telescope-cached-headings-keybindings*
 
 Suggested mappings to add to your Neovim config: >
 

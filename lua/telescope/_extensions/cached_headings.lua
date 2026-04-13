@@ -11,6 +11,9 @@ local DEFAULT_CONFIG = {
   -- Automatically regenerate the cache whenever you save a supported file
   auto_update       = false,
 
+  -- Show a vim.notify message after a successful cache update
+  notify_on_update  = true,
+
   -- Search ±N lines around the cached position when a heading seems to have moved
   enable_smart_jump = true,
   smart_jump_window = 200,
@@ -86,10 +89,12 @@ local function update_cache_for_buf(bufnr)
   local ok, err    = cache.write_cache(cache_path, entries, deps)
 
   if ok then
-    vim.notify(
-      string.format("[cached_headings] Cache updated (%d headings).", #entries),
-      vim.log.levels.INFO
-    )
+    if config.notify_on_update then
+      vim.notify(
+        string.format("[cached_headings] Cache updated (%d headings).", #entries),
+        vim.log.levels.INFO
+      )
+    end
   else
     vim.notify("[cached_headings] Failed to write cache: " .. (err or "unknown error"), vim.log.levels.ERROR)
   end
@@ -100,6 +105,15 @@ end
 return telescope.register_extension({
 
   setup = function(ext_config, _telescope_config)
+    if not pcall(require, "latex_nav_core.cache") then
+      vim.notify(
+        "[cached_headings] Missing required dependency: latex-nav-core.nvim\n"
+          .. "  Add 'Chiarandini/latex-nav-core.nvim' to your plugin manager.",
+        vim.log.levels.ERROR
+      )
+      return
+    end
+
     config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, ext_config or {})
 
     -- :CachedHeadingsUpdate — force-regenerate cache for the current buffer
@@ -109,6 +123,7 @@ return telescope.register_extension({
 
     -- :CachedHeadingsWipeAll — delete every cache file written by this plugin
     vim.api.nvim_create_user_command("CachedHeadingsWipeAll", function()
+      local cache = require("telescope._extensions.cached_headings.cache")
       local count, err = cache.wipe_all_caches(config.cache_strategy)
       if err then
         vim.notify("[cached_headings] " .. err, vim.log.levels.WARN)

@@ -35,3 +35,10 @@ end
 
 -- Add the plugin itself
 vim.opt.rtp:prepend(vim.fn.getcwd())
+
+-- Add latex-nav-core.nvim (sibling directory) so tests can require its modules.
+-- The cache and utils modules here delegate a few functions into
+-- latex_nav_core.{cache,latex}; without this, tests that exercise those paths
+-- fail with "module 'latex_nav_core.*' not found".
+local core_dir = vim.fn.fnamemodify(vim.fn.getcwd(), ":h") .. "/latex-nav-core.nvim"
+add_if_dir(core_dir)

@@ -31,6 +31,7 @@ where live parsing causes noticeable UI lag.
 
 - [nvim-telescope/telescope.nvim](https://github.com/nvim-telescope/telescope.nvim)
 - [nvim-lua/plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
+- [Chiarandini/latex-nav-core.nvim](https://github.com/Chiarandini/latex-nav-core.nvim) — shared cache utilities
 
 ## Why so fast?
 
@@ -60,6 +61,7 @@ where live parsing causes noticeable UI lag.
   dependencies = {
     "nvim-telescope/telescope.nvim",
     "nvim-lua/plenary.nvim",
+    "Chiarandini/latex-nav-core.nvim",
   },
   config = function()
     require("telescope").load_extension("cached_headings")
@@ -75,6 +77,7 @@ use {
   requires = {
     "nvim-telescope/telescope.nvim",
     "nvim-lua/plenary.nvim",
+    "Chiarandini/latex-nav-core.nvim",
   },
   config = function()
     require("telescope").load_extension("cached_headings")

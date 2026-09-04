@@ -37,6 +37,7 @@ Supported filetypes out of the box:
 
   • nvim-telescope/telescope.nvim
   • nvim-lua/plenary.nvim
+  • Chiarandini/latex-nav-core.nvim  (shared cache utilities)
 
 ==============================================================================
 3. SETUP                                    *telescope-cached-headings-setup*

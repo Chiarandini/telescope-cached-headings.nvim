@@ -21,6 +21,11 @@ local DEFAULT_CONFIG = {
   -- Include LaTeX starred variants: \section*, \subsection*, etc.
   include_starred   = false,
 
+  -- Extra LaTeX sectioning commands and their depth, merged over the
+  -- built-ins (part 1 .. subsubsection 5); false removes a built-in.
+  --   latex_headings = { bonussection = 3, paragraph = 6, part = false }
+  latex_headings    = {},
+
   -- Phase 2: multi-file LaTeX support
   -- When true, \input / \include / \subfile directives are followed and
   -- headings from all included files are shown in a single unified picker.
@@ -53,8 +58,6 @@ local config = {}
 ---Called by :CachedHeadingsUpdate and the auto_update autocmd.
 ---@param bufnr integer
 local function update_cache_for_buf(bufnr)
-  local cache  = require("telescope._extensions.cached_headings.cache")
-  local parser = require("telescope._extensions.cached_headings.parser")
   local filepath = vim.api.nvim_buf_get_name(bufnr)
   local filetype = vim.bo[bufnr].filetype
 
@@ -79,16 +82,11 @@ local function update_cache_for_buf(bufnr)
     return
   end
 
-  local entries, deps = parser.scan_file(filepath, filetype, {
-    include_starred        = config.include_starred,
-    scan_includes          = config.scan_includes,
-    recursive_limit        = config.recursive_limit,
-    ignore_include_pattern = config.ignore_include_pattern,
-  })
-  local cache_path = cache.get_cache_path(filepath, config.cache_strategy)
-  local ok, err    = cache.write_cache(cache_path, entries, deps)
+  local scan_opts = require("telescope._extensions.cached_headings.picker").scan_opts(config, "local")
+  local entries, _, _, err = require("latex_nav_core.cached_headings").refresh(
+    filepath, filetype, scan_opts, config.cache_strategy)
 
-  if ok then
+  if not err then
     if config.notify_on_update then
       vim.notify(
         string.format("[cached_headings] Cache updated (%d headings).", #entries),
@@ -96,7 +94,7 @@ local function update_cache_for_buf(bufnr)
       )
     end
   else
-    vim.notify("[cached_headings] Failed to write cache: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    vim.notify("[cached_headings] Failed to write cache: " .. err, vim.log.levels.ERROR)
   end
 end
 
@@ -105,16 +103,18 @@ end
 return telescope.register_extension({
 
   setup = function(ext_config, _telescope_config)
-    if not pcall(require, "latex_nav_core.cache") then
+    if not pcall(require, "latex_nav_core.cached_headings") then
       vim.notify(
-        "[cached_headings] Missing required dependency: latex-nav-core.nvim\n"
-          .. "  Add 'Chiarandini/latex-nav-core.nvim' to your plugin manager.",
+        "[cached_headings] latex-nav-core.nvim is missing or too old.\n"
+          .. "  Install or update 'Chiarandini/latex-nav-core.nvim'.",
         vim.log.levels.ERROR
       )
       return
     end
 
     config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, ext_config or {})
+    local ok, err = require("latex_nav_core.cached_headings.parser").validate_latex_headings(config.latex_headings)
+    if not ok then error("telescope-cached-headings: " .. err, 0) end
 
     -- :CachedHeadingsUpdate — force-regenerate cache for the current buffer
     vim.api.nvim_create_user_command("CachedHeadingsUpdate", function()
@@ -123,7 +123,7 @@ return telescope.register_extension({
 
     -- :CachedHeadingsWipeAll — delete every cache file written by this plugin
     vim.api.nvim_create_user_command("CachedHeadingsWipeAll", function()
-      local cache = require("telescope._extensions.cached_headings.cache")
+      local cache = require("latex_nav_core.cached_headings.cache")
       local count, err = cache.wipe_all_caches(config.cache_strategy)
       if err then
         vim.notify("[cached_headings] " .. err, vim.log.levels.WARN)

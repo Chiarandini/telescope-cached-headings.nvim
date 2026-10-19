@@ -22,55 +22,6 @@ local function apply_transform(title, transform)
   return title
 end
 
--- Indentation prefix per heading level (up to 6 levels)
-local INDENT = { "", "  ", "    ", "      ", "        ", "          " }
-
--- LaTeX level → command name (mirrors parser.lua's LATEX_COMMANDS)
-local LATEX_LEVEL_KINDS = { "part", "chapter", "section", "subsection", "subsubsection" }
-
----Return the heading kind string for an entry, falling back to derivation
----when the `kind` field is absent (entries read from an old-format cache).
----@param entry table  { kind?, level, ... }
----@param filetype string
----@return string
-local function get_kind(entry, filetype)
-  if entry.kind then return entry.kind end
-  if filetype == "tex" then
-    return LATEX_LEVEL_KINDS[entry.level] or ("level" .. entry.level)
-  end
-  return "h" .. entry.level
-end
-
----Extract a clean, human-readable title from a cached heading line.
----For display in the picker only — smart jump always uses the raw text.
----@param text string  Raw heading line as stored in cache.
----@param filetype string
----@return string
-local function extract_title(text, filetype)
-  if filetype == "tex" then
-    -- Grab the first brace group: \section{Title} or \section*{Title}
-    return text:match("{(.-)}") or text
-  elseif filetype == "markdown" then
-    return text:match("^#+%s+(.+)$") or text
-  elseif filetype == "org" then
-    return text:match("^%*+%s+(.+)$") or text
-  end
-  return text
-end
-
----Build the heading portion of the display string (without filename).
----Format: "<indent>[kind] <title>"  (starred entries get a trailing " *")
----@param entry table  { text, level, kind?, starred, ... }
----@param filetype string
----@return string
-local function make_display(entry, filetype)
-  local indent = INDENT[math.min(entry.level, #INDENT)] or ""
-  local title  = extract_title(entry.text, filetype)
-  local kind   = get_kind(entry, filetype)
-  local suffix = entry.starred and " *" or ""
-  return indent .. "[" .. kind .. "] " .. title .. suffix
-end
-
 --- Return the 1-based index of the first entry in `entries` whose resolved
 --- absolute path matches `subfile_abs`. Falls back to 1 if none found.
 ---@param entries   table   List of heading entries.
@@ -79,13 +30,26 @@ end
 ---@return integer
 local function find_default_selection(entries, subfile_abs, root_dir)
   for i, e in ipairs(entries) do
-    local sf = e.source_file or ""
-    if sf ~= "" then
-      local abs = vim.fn.fnamemodify(root_dir .. "/" .. sf, ":p")
+    if e.source_file ~= "" then
+      local abs = vim.fn.fnamemodify(root_dir .. "/" .. e.source_file, ":p")
       if abs == subfile_abs then return i end
     end
   end
   return 1
+end
+
+---Scan options for `mode`; the full-document view always follows includes.
+---@param config table
+---@param mode "local"|"global"
+---@return LatexNavCore.HeadingsScanOpts
+M.scan_opts = function(config, mode)
+  return {
+    include_starred        = config.include_starred,
+    scan_includes          = mode == "global" or config.scan_includes,
+    recursive_limit        = config.recursive_limit,
+    ignore_include_pattern = config.ignore_include_pattern,
+    latex_headings         = config.latex_headings,
+  }
 end
 
 ---Open the cached-headings Telescope picker for the current buffer.
@@ -98,9 +62,8 @@ M.open = function(opts, config, overrides)
   local finders      = require("telescope.finders")
   local pickers      = require("telescope.pickers")
   local conf         = require("telescope.config").values
-  local cache  = require("telescope._extensions.cached_headings.cache")
-  local parser = require("telescope._extensions.cached_headings.parser")
-  local utils  = require("telescope._extensions.cached_headings.utils")
+  local headings     = require("latex_nav_core.cached_headings")
+  local core_latex   = require("latex_nav_core.latex")
 
   local bufnr    = vim.api.nvim_get_current_buf()
   local filepath = vim.api.nvim_buf_get_name(bufnr)
@@ -112,16 +75,7 @@ M.open = function(opts, config, overrides)
     return
   end
 
-  -- Normalise the filetype: Neovim reports "tex" for LaTeX files
-  local ft_allowed = false
-  for _, ft in ipairs(config.allowed_filetypes) do
-    if ft == filetype then
-      ft_allowed = true
-      break
-    end
-  end
-
-  if not ft_allowed then
+  if not vim.tbl_contains(config.allowed_filetypes, filetype) then
     vim.notify(
       string.format("[cached_headings] Filetype '%s' is not in allowed_filetypes.", filetype),
       vim.log.levels.WARN
@@ -129,7 +83,6 @@ M.open = function(opts, config, overrides)
     return
   end
 
-  -- ── Phase 3: subfile / global-mode setup ───────────────────────────────────
   overrides = overrides or {}
   local mode            = overrides.mode or "local"
   local origin_filepath = overrides.origin_filepath or filepath
@@ -137,7 +90,7 @@ M.open = function(opts, config, overrides)
 
   -- Detect root only on the initial "local" call for .tex files
   if mode == "local" and filetype == "tex" and root_filepath == nil then
-    root_filepath = parser.find_root_via_subfiles(filepath)
+    root_filepath = core_latex.find_root_via_subfiles(filepath)
     if not root_filepath and config.root_file and config.root_file ~= "" then
       local abs = vim.fn.fnamemodify(config.root_file, ":p")
       if vim.fn.filereadable(abs) == 1 then
@@ -153,23 +106,10 @@ M.open = function(opts, config, overrides)
     root_dir  = vim.fn.fnamemodify(root_filepath, ":h")
     filepath  = root_filepath
   end
+  ---@cast filepath string
 
-  local cache_path = cache.get_cache_path(filepath, config.cache_strategy)
-  local entries, is_v2 = cache.read_cache(cache_path, root_dir)
-
-  if not entries then
-    -- No cache yet, or dependencies changed — generate it now
-    local scan_opts = {
-      include_starred        = config.include_starred,
-      scan_includes          = (mode == "global") or config.scan_includes,
-      recursive_limit        = config.recursive_limit,
-      ignore_include_pattern = config.ignore_include_pattern,
-    }
-    local raw, deps = parser.scan_file(filepath, filetype, scan_opts)
-    cache.write_cache(cache_path, raw, deps)
-    entries = raw
-    is_v2 = deps ~= nil
-  end
+  local entries, cache_path, meta =
+    headings.load(filepath, filetype, M.scan_opts(config, mode), config.cache_strategy)
 
   if #entries == 0 then
     vim.notify("[cached_headings] No headings found in this file.", vim.log.levels.INFO)
@@ -182,6 +122,11 @@ M.open = function(opts, config, overrides)
     local subfile_abs = vim.fn.fnamemodify(origin_filepath, ":p")
     default_idx = find_default_selection(entries, subfile_abs, root_dir)
   end
+
+  -- Indent relative to the outermost heading present, so a document
+  -- without parts or chapters starts flush left.
+  local min_level = math.huge
+  for _, e in ipairs(entries) do min_level = math.min(min_level, e.level) end
 
   -- Prompt title shows current mode and toggle hint
   local toggle_key = config.subfile_toggle_key or "<C-g>"
@@ -203,19 +148,13 @@ M.open = function(opts, config, overrides)
     finder = finders.new_table({
       results = entries,
       entry_maker = function(entry)
-        local source_file = entry.source_file or ""
+        local source_file = entry.source_file
         local abs_file    = source_file ~= ""
           and (root_dir .. "/" .. source_file)
           or filepath
 
-        local starred = entry.starred or false
-        local e       = { text = entry.text, level = entry.level, kind = entry.kind, starred = starred }
-
-        -- Pre-compute the heading portion (indent + [kind] + title) once.
-        -- The display function captures it in a closure — no re-computation per render.
-        local heading_str = make_display(e, filetype)
-        local kind        = get_kind(e, filetype)
-        local title       = extract_title(entry.text, filetype)
+        local heading_str = string.rep("  ", entry.level - min_level)
+          .. "[" .. entry.kind .. "] " .. entry.title .. (entry.starred and " *" or "")
 
         return {
           value    = entry,
@@ -234,8 +173,8 @@ M.open = function(opts, config, overrides)
 
           -- Include source_file in ordinal so users can filter by filename
           ordinal  = source_file ~= ""
-            and (kind .. " " .. title .. " " .. source_file)
-            or  (kind .. " " .. title),
+            and (entry.kind .. " " .. entry.title .. " " .. source_file)
+            or  (entry.kind .. " " .. entry.title),
 
           filename = abs_file,
           lnum     = entry.line,
@@ -253,7 +192,7 @@ M.open = function(opts, config, overrides)
         if not selection then return end
 
         local entry = selection.value
-        local sf    = entry.source_file or ""
+        local sf    = entry.source_file
 
         -- Determine the heading's absolute file path
         local heading_abs
@@ -270,31 +209,24 @@ M.open = function(opts, config, overrides)
           bufnr = vim.api.nvim_get_current_buf()
         end
 
-        -- Smart jump / plain jump
+        local line = entry.line
         if config.enable_smart_jump then
-          local found = utils.verify_or_find(bufnr, entry.line, entry.text, config.smart_jump_window)
-          if found then
-            vim.api.nvim_win_set_cursor(0, { found, 0 })
-            if found ~= entry.line then
-              vim.notify("[cached_headings] Heading shifted. Run :CachedHeadingsUpdate.", vim.log.levels.INFO)
-              if not is_v2 then
-                -- patch v1 cache
-                local all = cache.read_cache(cache_path)
-                if all then
-                  for _, e in ipairs(all) do
-                    if e.line == entry.line and e.text == entry.text then e.line = found; break end
-                  end
-                  cache.write_cache(cache_path, all)
-                end
-              end
+          local found = core_latex.verify_or_find_heading(bufnr, entry.line, entry.text, config.smart_jump_window)
+          if not found then
+            vim.notify("[cached_headings] Heading not found near its cached line. Run :CachedHeadingsUpdate.",
+              vim.log.levels.WARN)
+          elseif found ~= entry.line then
+            line, entry.line = found, found
+            local ok, err = require("latex_nav_core.cached_headings.cache").write_cache(cache_path, entries, meta)
+            if not ok then
+              vim.notify("[cached_headings] Heading had moved; could not patch the cache: " .. tostring(err),
+                vim.log.levels.WARN)
+            elseif config.notify_on_update then
+              vim.notify("[cached_headings] Heading had moved; cache patched.", vim.log.levels.INFO)
             end
-          else
-            vim.api.nvim_win_set_cursor(0, { entry.line, 0 })
-            vim.notify("[cached_headings] Heading not found. Run :CachedHeadingsUpdate.", vim.log.levels.WARN)
           end
-        else
-          vim.api.nvim_win_set_cursor(0, { entry.line, 0 })
         end
+        vim.api.nvim_win_set_cursor(0, { math.min(line, vim.api.nvim_buf_line_count(0)), 0 })
         vim.cmd("normal! zz")
       end)
 
@@ -320,8 +252,7 @@ M.open = function(opts, config, overrides)
       local copy_fn = function()
         local selection = action_state.get_selected_entry()
         if not selection then return end
-        local title = extract_title(selection.value.text, filetype)
-        local text  = apply_transform(title, config.copy_transform)
+        local text = apply_transform(selection.value.title, config.copy_transform)
         vim.fn.setreg("+", text)
         vim.fn.setreg('"', text)
         actions.close(prompt_bufnr)

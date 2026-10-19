@@ -26,7 +26,7 @@ local DEFAULT_CONFIG = {
   --   latex_headings = { bonussection = 3, paragraph = 6, part = false }
   latex_headings    = {},
 
-  -- Phase 2: multi-file LaTeX support
+  -- Multi-file LaTeX support
   -- When true, \input / \include / \subfile directives are followed and
   -- headings from all included files are shown in a single unified picker.
   -- Only applies to "tex" filetypes. Default false to keep it opt-in.
@@ -34,7 +34,7 @@ local DEFAULT_CONFIG = {
   recursive_limit        = 5,    -- max include nesting depth (guards circular deps)
   ignore_include_pattern = "",   -- Lua pattern; matching include paths are skipped
 
-  -- Phase 3: subfile toggle
+  -- Subfile toggle
   root_file          = "",        -- manual override: absolute path to the root .tex file
   subfile_toggle_key = "<C-g>",   -- key to toggle local↔global mode inside the picker
 
@@ -52,7 +52,7 @@ local DEFAULT_CONFIG = {
 -- Module-level config table populated during setup()
 local config = {}
 
--- ─── Helpers ─────────────────────────────────────────────────────────────────
+-- Helpers
 
 ---Run a full cache regeneration for the given buffer.
 ---Called by :CachedHeadingsUpdate and the auto_update autocmd.
@@ -98,7 +98,7 @@ local function update_cache_for_buf(bufnr)
   end
 end
 
--- ─── Extension registration ───────────────────────────────────────────────────
+-- Extension registration
 
 return telescope.register_extension({
 

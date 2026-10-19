@@ -28,7 +28,9 @@ instant.
 Supported filetypes out of the box:
 
   • LaTeX   (`tex`)       – \part, \chapter, \section, \subsection,
-                            \subsubsection  (and optionally starred variants)
+                            \subsubsection, any commands added with
+                            `latex_headings`, and optionally starred
+                            variants
   • Markdown (`markdown`) – # through ######
   • Org-mode (`org`)      – * through ******
 
@@ -51,9 +53,11 @@ Load and configure the extension inside your Neovim config: >
         cache_strategy    = "global",
         allowed_filetypes = { "tex", "markdown", "org" },
         auto_update       = false,
+        notify_on_update  = true,
         enable_smart_jump = true,
         smart_jump_window = 200,
         include_starred   = false,
+        latex_headings    = {},
 
         -- Multi-file LaTeX: follow \input / \include / \subfile directives
         scan_includes          = false,
@@ -119,11 +123,13 @@ still holds the expected text in the live buffer.
   Shifted  The heading is not at the cached line, but is found within
            ±`smart_jump_window` lines. Jump to the new position and update
            the cache entry automatically.
-           Message: "Heading shifted. Run :CachedHeadingsUpdate."
+           Message (when `notify_on_update` is set): "Heading had moved;
+           cache patched."
 
   Missing  The heading cannot be found anywhere in the search window. Jump
            to the original cached line and warn the user.
-           Message: "Heading not found. Run :CachedHeadingsUpdate."
+           Message: "Heading not found near its cached line. Run
+           :CachedHeadingsUpdate."
 
 Set `enable_smart_jump = false` to skip verification and jump directly to the
 cached line number without any checks.
@@ -246,11 +252,18 @@ auto_update ~
     file (`BufWritePost`).
     WARNING: On very large files this may cause a brief pause on save.
 
+notify_on_update ~
+    Type:    boolean
+    Default: `true`
+
+    Notify after `:CachedHeadingsUpdate` and after a rescan on save, and
+    when Smart Jump finds a moved heading and patches the cache.
+
 enable_smart_jump ~
     Type:    boolean
     Default: `true`
 
-    See |cached_headings-smart-jump| for a full description.
+    See |telescope-cached-headings-smart-jump| for a full description.
     Set to `false` to always jump straight to the cached line number.
 
 smart_jump_window ~
@@ -268,6 +281,26 @@ include_starred ~
     LaTeX only. When `true`, starred sectioning commands such as
     `\section*`, `\subsection*`, etc. are included in the picker and cache.
     Starred entries are shown with a trailing ` *` in the picker display.
+
+latex_headings ~
+    Type:    table (command name → integer depth, or `false`)
+    Default: `{}`
+
+    LaTeX only. Extra sectioning commands and their depth, merged over the
+    built-ins: `part` 1, `chapter` 2, `section` 3, `subsection` 4,
+    `subsubsection` 5. Write names without the backslash; `false` removes
+    a built-in. A custom heading is listed with its command name, e.g.
+    `[bonussection] Uniform Spaces`, indented by depth: >
+
+      latex_headings = {
+        bonussection = 3,
+        paragraph    = 6,
+        part         = false,
+      },
+<
+    The title is the first `{...}` argument; one optional `[...]` argument
+    before it is skipped. Changing this table makes existing caches stale,
+    so the next open rescans.
 
 scan_includes ~
     Type:    boolean

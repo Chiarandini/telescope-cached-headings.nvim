@@ -11,9 +11,11 @@ where live parsing causes noticeable UI lag.
 
 - **Instant opening** after the first use — cache is read, not regenerated
 - **Smart Jump** — automatically finds a heading if it has shifted since the
-  cache was written, and silently updates the cache entry
+  cache was written, and updates the cache entry
 - **LaTeX, Markdown, and Org-mode** support out of the box
 - **Starred LaTeX variants** (`\section*`, etc.) via opt-in config flag
+- **Custom LaTeX headings**: list your own sectioning commands
+  (`\bonussection`, `\lecture`, ...) at any depth via `latex_headings`
 - **Two cache strategies**: global (tidy) or local (inspectable)
 - **Auto-update** on save via `BufWritePost` (opt-in)
 - **Wipe all caches** in one command when you need a clean slate
@@ -31,24 +33,17 @@ where live parsing causes noticeable UI lag.
 
 - [nvim-telescope/telescope.nvim](https://github.com/nvim-telescope/telescope.nvim)
 - [nvim-lua/plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
+- [Chiarandini/latex-nav-core.nvim](https://github.com/Chiarandini/latex-nav-core.nvim) — shared cache utilities
 
 ## Why so fast?
 
- 1. Streaming with io.lines(): The file is never fully loaded into memory. io.lines() is a lazy iterator that reads one line at a time from the C standard library — no Lua table holding 100k lines, no calling vim.fn.readfile()
-
-  2. Pre-compiled patterns:
-  The LaTeX patterns are built once at module load time via an IIFE and stored in LATEX_PATTERNS. Inside the loop,
-  line:find(pat.plain) reuses the same compiled pattern string on every line rather than constructing a new pattern string per line.
-
-  3. Early-exit pattern matching:
-  For each line it tries line:find(pat.plain) first. ```string.find``` anchors to the start (^)
-  so it bails out immediately on the vast majority of lines (anything that doesn't start
-  with \section etc.) — the match fails in O(1) on non-heading lines.
-
-  4. Caching:
-  After the first scan, results are written to a flat text file. Subsequent opens read the cache instead of rescanning. The cache is only invalidated when the file's mtime changes (or manually).
-
-  So for a 100k-line LaTeX file, most of the lines are rejected by a single anchored ```string.find``` call, the rest of the file is streamed without ever sitting in memory, and after the first open it's just a cache read.
+After the first open the picker reads a small cache file instead of the
+source: one line per heading rather than one per source line. The scan itself
+(in latex-nav-core.nvim) tests each line with a single anchored match, so only
+the rare heading lines do real work. A cache is rescanned when the scan
+options change or an included file's modification time does. Edits to the
+file itself are picked up by `:CachedHeadingsUpdate` or `auto_update`, and
+Smart Jump covers headings that only moved.
 
 ## Installation
 
@@ -60,6 +55,7 @@ where live parsing causes noticeable UI lag.
   dependencies = {
     "nvim-telescope/telescope.nvim",
     "nvim-lua/plenary.nvim",
+    "Chiarandini/latex-nav-core.nvim",
   },
   config = function()
     require("telescope").load_extension("cached_headings")
@@ -75,6 +71,7 @@ use {
   requires = {
     "nvim-telescope/telescope.nvim",
     "nvim-lua/plenary.nvim",
+    "Chiarandini/latex-nav-core.nvim",
   },
   config = function()
     require("telescope").load_extension("cached_headings")
@@ -97,6 +94,7 @@ require("telescope").setup({
       enable_smart_jump = true,
       smart_jump_window = 200,
       include_starred   = false,
+      latex_headings    = {},  -- e.g. { bonussection = 3, part = false }
 
       -- Multi-file LaTeX: follow \input / \include / \subfile directives
       scan_includes          = false,
@@ -256,6 +254,7 @@ When `copy_transform` is `nil` (the default) the raw extracted title is copied.
 | `enable_smart_jump` | `boolean` | `true` | Search for shifted headings instead of jumping blindly |
 | `smart_jump_window` | `integer` | `200` | Lines to search on each side of the cached position |
 | `include_starred` | `boolean` | `false` | Include LaTeX starred variants (`\section*`, etc.) |
+| `latex_headings` | `table` | `{}` | Extra LaTeX heading commands and their depth, merged over `part`=1 .. `subsubsection`=5; `false` removes a built-in |
 | `scan_includes` | `boolean` | `false` | Follow `\input`/`\include`/`\subfile` and show the whole document tree |
 | `recursive_limit` | `integer` | `5` | Maximum include nesting depth (guards against circular includes) |
 | `ignore_include_pattern` | `string` | `""` | Lua pattern — include paths matching it are skipped |
@@ -266,24 +265,20 @@ When `copy_transform` is `nil` (the default) the raw extracted title is copied.
 
 ## Cache Format
 
-Cache files are plain text and human-readable. Single-file caches use one line
-per heading:
+Cache files are plain text. The header records the scan options and the
+modification time of each included file; a cache scanned with different
+options, or whose included files changed, is rescanned on the next open.
 
 ```
-line_number|level|full_heading_text
-```
-
-Multi-file caches (produced when `scan_includes = true`) use a versioned format
-with dependency metadata:
-
-```
-# v2
+# v3
+# sig:starred=0;includes=1;limit=5;ignore=;tex=chapter:2,part:1,section:3,subsection:4,subsubsection:5
 # dep:chapters/intro.tex=1718000000
-# dep:chapters/conclusion.tex=1718000001
-|12|1|\part{Foundations}
-chapters/intro.tex|3|3|\section{Introduction}
-chapters/intro.tex|10|4|\subsection{Motivation}
+|12|1|part|0|Foundations|\part{Foundations}
+chapters/intro.tex|3|3|section|0|Introduction|\section{Introduction}
 ```
+
+Each line is `source_file|line|level|kind|starred|title|text`; `source_file`
+is empty for the root file.
 
 For the `"local"` cache strategy the file is placed next to your source file
 (add `*.headings` to `.gitignore`).

@@ -71,27 +71,27 @@ telescope-cached-headings.nvim/
 │       └── _extensions/
 │           ├── cached_headings.lua    # Extension registration
 │           └── cached_headings/
-│               ├── picker.lua         # Telescope picker definition
-│               ├── cache.lua          # I/O Logic
-│               ├── parser.lua         # High-perf scanning logic
-│               └── utils.lua          # Smart jump verification logic
+│               └── picker.lua         # Telescope picker definition
 └── README.md
 ```
 
+Scanning, the cache, and smart-jump verification live in latex-nav-core.nvim
+(`latex_nav_core.cached_headings` and `latex_nav_core.latex`), shared with
+snacks-cached-headings.nvim.
+
 ### 4.2 Key Function Signatures
 
-**`parser.lua`**
+**`latex_nav_core.cached_headings`**
 ```lua
--- Uses io.lines for maximum speed on large files
--- Returns: { { text = "\section{...}", line = 10, level = 1 }, ... }
-M.scan_file = function(filepath, filetype) end
+-- Cache when fresh for `opts`, else rescan. Entries:
+-- { text, title, line, level, kind, starred, source_file }
+M.load = function(filepath, filetype, opts, strategy) end
 ```
 
-**`utils.lua` (Smart Jump)**
+**`latex_nav_core.latex` (Smart Jump)**
 ```lua
--- Verifies if the target line still holds the heading.
--- If not, searches neighborhood. Returns new_line_num or nil.
-M.verify_or_find = function(bufnr, target_line, heading_text) end
+-- Nearest line within +/- window_size holding heading_text, or nil.
+M.verify_or_find_heading = function(bufnr, target_line, heading_text, window_size) end
 ```
 
 ## 5. Documentation (Help File)

@@ -35,7 +35,7 @@ Supported filetypes out of the box:
   • Org-mode (`org`)      – * through ******
 
 ==============================================================================
-2. REQUIREMENTS                        *telescope-cached-headings-requirements*
+2. REQUIREMENTS                       *telescope-cached-headings-requirements*
 
   • nvim-telescope/telescope.nvim
   • nvim-lua/plenary.nvim
@@ -70,7 +70,7 @@ Load and configure the extension inside your Neovim config: >
 
         -- Copy heading title to clipboard
         copy_label_key = "<C-y>",
-        copy_transform = nil,  -- table, function, or nil; see |cached-headings-copy|
+        copy_transform = nil,  -- see |cached-headings-copy|
       },
     },
   })
@@ -397,7 +397,7 @@ copy_transform ~
     manually (they match the glob `*.headings`).
 
 ==============================================================================
-11. KEYBINDINGS                         *telescope-cached-headings-keybindings*
+11. KEYBINDINGS                        *telescope-cached-headings-keybindings*
 
 Suggested mappings to add to your Neovim config: >
 
